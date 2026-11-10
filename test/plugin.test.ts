@@ -3,7 +3,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import { buildConfig, createLocalReq, getPayload, type Endpoint, type Payload, type PayloadRequest } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { ageGate, ageGateCheck, type AgeGateEvent } from '../src/index.js'
+import { ageGate, ageGateCheck, applyAgeGate, type AgeGateEvent } from '../src/index.js'
 
 type U = { id: string; email: string; role: string; minorUntil?: string | null; minorCap?: string | null }
 let payload: Payload
@@ -12,6 +12,7 @@ const SECRET = 's'.repeat(40)
 const events: AgeGateEvent[] = []
 let staff: U
 let kid: U
+let other: U
 
 const reqAs = async (user: U | null, headers = new Headers()) => {
   const req = (await createLocalReq({ user: (user ? { ...user, collection: 'users' } : undefined) as never }, payload)) as PayloadRequest
@@ -35,12 +36,13 @@ beforeAll(async () => {
       telemetry: false,
       typescript: { autoGenerate: false },
       db: mongooseAdapter({ url: mongo.getUri('agegate'), ensureIndexes: true }),
-      collections: [{ slug: 'users', auth: true, access: { update: () => true, read: () => true }, fields: [{ name: 'role', type: 'select', options: ['staff', 'member'], defaultValue: 'member' }] }],
+      collections: [{ slug: 'users', auth: true, access: { create: () => true, update: () => true, read: () => true }, fields: [{ name: 'role', type: 'select', options: ['staff', 'member'], defaultValue: 'member' }] }],
       plugins: [ageGate({ secret: SECRET, canSetMinor: ({ req }) => (req.user as unknown as U | null)?.role === 'staff', onEvent: (e) => void events.push(e) })],
     }),
   })
   staff = (await payload.create({ collection: 'users', data: { email: 'staff@example.invalid', password: 'pw-staff-long', role: 'staff' } as never })) as unknown as U
   kid = (await payload.create({ collection: 'users', data: { email: 'kid@example.invalid', password: 'pw-kid-long' } as never })) as unknown as U
+  other = (await payload.create({ collection: 'users', data: { email: 'other@example.invalid', password: 'pw-other-long' } as never })) as unknown as U
 })
 
 afterAll(async () => {
@@ -92,6 +94,25 @@ describe('the age gate on a users collection', () => {
     expect(await (await adult(kid, true)).json()).toEqual({ adult: true })
     expect((await fresh(kid)).minorUntil ?? null).toBeNull()
     expect(events.at(-1)).toMatchObject({ type: 'minor-cleared', by: 'self' })
+  })
+
+  it('only the person and staff can read "minor until"; another member and a signed-out request can’t', async () => {
+    await payload.update({ collection: 'users', id: kid.id, data: { minorUntil: '2031-04' } as never, overrideAccess: true })
+    const as = async (u: U | null) => (await payload.findByID({ collection: 'users', id: kid.id, depth: 0, overrideAccess: false, user: u ? ({ ...u, collection: 'users' } as never) : undefined })) as unknown as U
+    expect((await as(kid)).minorUntil).toBe('2031-04')
+    expect((await as(staff)).minorUntil).toBe('2031-04')
+    expect((await as(other)).minorUntil).toBeUndefined()
+    expect((await as(null)).minorUntil).toBeUndefined()
+  })
+
+  it('a sign-up that creates with access checks drops the flag, so applyAgeGate records it (and refuses junk)', async () => {
+    const userData = { minorUntil: '2030-05', minorCap: '2032-05' }
+    const created = (await payload.create({ collection: 'users', data: { email: 'signup@example.invalid', password: 'pw-signup-long', ...userData } as never, overrideAccess: false })) as unknown as U
+    expect((await fresh(created)).minorUntil ?? null).toBeNull() // dropped by field access, as the README warns
+    await applyAgeGate(payload, { userId: created.id, userData, req: await reqAs(null) })
+    expect(await fresh(created)).toMatchObject(userData)
+    expect(events.at(-1)).toMatchObject({ type: 'minor-set', to: '2030-05', by: 'signup' })
+    await expect(applyAgeGate(payload, { userId: created.id, userData: { minorUntil: 'soon' } })).rejects.toThrow(/YYYY-MM/)
   })
 
   it('refuses the adult question signed out', async () => {

@@ -24,7 +24,9 @@ describe('ageCheck: from only a country and a birth month and year', () => {
   })
 
   it('marks a minor until the month they are certainly of age, by the place’s majority', () => {
-    expect(ageCheck({ country: 'US', birthYear: 2010, birthMonth: 6, now: at('2026-11-10') })).toEqual({ result: 'minor', minorUntil: '2028-07' })
+    // No state given: the highest of the US's rules (Mississippi, 21), protectively.
+    expect(ageCheck({ country: 'US', birthYear: 2010, birthMonth: 6, now: at('2026-11-10') })).toEqual({ result: 'minor', minorUntil: '2031-07' })
+    expect(ageCheck({ country: 'US', region: 'AZ', birthYear: 2010, birthMonth: 6, now: at('2026-11-10') })).toEqual({ result: 'minor', minorUntil: '2028-07' })
     expect(ageCheck({ country: 'US', region: 'AL', birthYear: 2010, birthMonth: 6, now: at('2026-11-10') })).toEqual({ result: 'minor', minorUntil: '2029-07' })
     expect(ageCheck({ country: 'US', region: 'MS', birthYear: 2010, birthMonth: 6, now: at('2026-11-10') })).toEqual({ result: 'minor', minorUntil: '2031-07' })
     expect(ageCheck({ country: 'KR', birthYear: 2010, birthMonth: 6, now: at('2026-11-10') })).toEqual({ result: 'minor', minorUntil: '2029-07' })
@@ -44,7 +46,7 @@ describe('ageCheck: from only a country and a birth month and year', () => {
 
   it('a site can raise the minimum, and override any place', () => {
     expect(ageCheck({ country: 'US', birthYear: 2012, birthMonth: 1, now: at('2026-11-10'), minimumAge: 16 }).result).toBe('too-young')
-    expect(ageCheck({ country: 'US', birthYear: 2012, birthMonth: 1, now: at('2026-11-10'), ages: { US: { consent: 13, majority: 21 } } })).toEqual({ result: 'minor', minorUntil: '2033-02' })
+    expect(ageCheck({ country: 'US', birthYear: 2012, birthMonth: 1, now: at('2026-11-10'), ages: { US: { consent: 13, majority: 20 } } })).toEqual({ result: 'minor', minorUntil: '2032-02' })
   })
 })
 

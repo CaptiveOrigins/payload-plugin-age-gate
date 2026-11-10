@@ -42,11 +42,19 @@ export const AGES: Record<string, AgeRule> = {
   RU: { consent: 14, majority: 18 }, UA: { consent: 14, majority: 18 },
 }
 
-/** The rule for a place: the region's if listed, else the country's, else the default. */
+/**
+ * The rule for a place: the region's if given and listed, else the country's. Protective by default (kids first):
+ * when a country has regional rules and no region is given, the highest consent and majority among them is used.
+ */
 export function ruleFor(country: string, region?: string | null, ages: Record<string, AgeRule> = AGES): AgeRule {
   const c = country.trim().toUpperCase()
   const r = region?.trim().toUpperCase()
-  return (r && ages[`${c}-${r}`]) || ages[c] || DEFAULT_RULE
+  if (r && ages[`${c}-${r}`]) return ages[`${c}-${r}`]!
+  const base = ages[c] ?? DEFAULT_RULE
+  if (r) return base // a region with no rule of its own follows its country
+  const regional = Object.entries(ages).filter(([k]) => k.startsWith(`${c}-`)).map(([, v]) => v)
+  if (!regional.length) return base
+  return { consent: Math.max(base.consent, ...regional.map((x) => x.consent)), majority: Math.max(base.majority, ...regional.map((x) => x.majority)), note: 'highest of its regions (no region given)' }
 }
 
 /** The highest age of majority anywhere in the table: the cap on how long anyone stays a minor. */

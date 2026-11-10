@@ -94,20 +94,23 @@ export const tooYoungMessage = (allowedFrom: string) => `Thanks for your interes
 /** The fields added to the users collection. Nobody can change them through the API except `canSetMinor`. */
 function fields(opts: AgeGateOptions): Field[] {
   const staff = ({ req }: { req: PayloadRequest }) => Promise.resolve(opts.canSetMinor({ req }))
+  // Only the person and staff see it: "minor until 2031-04" hints at a birth month (Plugin Security, 0.1.0).
+  const selfOrStaff = async ({ req, id, doc }: { req: PayloadRequest; id?: string | number; doc?: { id?: unknown } }) =>
+    Boolean(req.user && String(req.user.id) === String(id ?? doc?.id)) || (await opts.canSetMinor({ req }))
   return [
     {
       name: 'minorUntil',
       label: 'A minor until',
       type: 'text',
       index: true,
-      access: { create: () => false, update: staff },
+      access: { read: selfOrStaff as never, create: staff, update: staff },
       validate: (v: unknown) => (v == null || v === '' || /^\d{4}-(0[1-9]|1[0-2])$/.test(String(v)) ? true : 'Use YYYY-MM.'),
       admin: { position: 'sidebar', description: 'Set at sign-up from the age check, or by staff for safety. Empty: an adult.' },
     },
     {
       name: 'minorCap',
       type: 'text',
-      access: { create: () => false, update: staff, read: staff },
+      access: { create: staff, update: staff, read: staff },
       admin: { hidden: true },
     },
   ]
@@ -175,9 +178,26 @@ export const ageGate =
           },
         }
       }),
-      custom: { ...config.custom, ageGate: { users, minimumAge: opts.minimumAge ?? 13 } },
+      custom: { ...config.custom, ageGate: { users, minimumAge: opts.minimumAge ?? 13 }, ageGateOnEvent: opts.onEvent },
     }
   }
+
+/**
+ * Records an age check's result on a new account. Use it after creating the user: the fields can't be written through
+ * access-checked creates (only `canSetMinor` may), so a sign-up that passed `userData` with `overrideAccess: false`
+ * would otherwise drop the minor flag and treat a child as an adult. This writes with full access, refuses anything
+ * that isn't a well-formed YYYY-MM, and logs the change.
+ */
+export async function applyAgeGate(payload: import('payload').Payload, args: { userId: string | number; userData?: { minorUntil?: string; minorCap?: string } | null; req?: PayloadRequest }) {
+  const d = args.userData
+  if (!d?.minorUntil) return
+  const ok = (v?: string) => Boolean(v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v))
+  if (!ok(d.minorUntil) || (d.minorCap && !ok(d.minorCap))) throw new APIError('age-gate: minorUntil and minorCap must be YYYY-MM.', 500)
+  const users = (payload.config.custom?.ageGate as { users?: string } | undefined)?.users ?? 'users'
+  await payload.update({ collection: users as never, id: args.userId, data: { minorUntil: d.minorUntil, minorCap: d.minorCap ?? d.minorUntil } as never, overrideAccess: true, req: args.req, context: { ageGate: true } })
+  const onEvent = (payload.config.custom?.ageGateOnEvent as AgeGateOptions['onEvent']) ?? undefined
+  if (onEvent && args.req) await onEvent({ type: 'minor-set', user: String(args.userId), from: null, to: d.minorUntil, by: 'signup', req: args.req })
+}
 
 /** For your own check outside sign-up (e.g. an invite form): throws a plain refusal when the answers aren't allowed. */
 export function assertAllowedAge(input: Parameters<typeof ageCheck>[0]): AgeResult {

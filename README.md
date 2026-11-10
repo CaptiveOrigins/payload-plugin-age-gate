@@ -14,7 +14,10 @@ Age gate for Payload: a neutral birth month and year check at sign-up that store
 - **Never guesses a birthday.** Without the day, someone counts as a year older only once their birth month is over, so the answer is never older than they are.
 - **"Are you a legal adult now?"** Once `minorUntil` has passed, the person answers. Yes clears it. No moves it a year on, but never past the highest age of majority anywhere (21), so nobody stays a minor indefinitely.
 - **Nobody sets their own status.** Only who you allow with `canSetMinor` (staff) can change `minorUntil`. Every change goes to `onEvent`, for your audit log.
-- **Fails closed.** Missing or nonsense answers are refused, not guessed.
+- **Fails closed.** Missing or nonsense answers are refused, not guessed. Where a country's ages differ by region (US states, Canadian provinces) and no region is given, the highest applies.
+- **Private.** Only the person and `canSetMinor` can read `minorUntil`.
+
+**It's self-declared, not verified.** A child can choose a false year or clear their cookies. This checks what people tell you, protectively; it doesn't prove anyone's age.
 
 What a minor may do on your site is up to your access rules: `isMinor(user.minorUntil)`.
 
@@ -35,6 +38,8 @@ plugins: [
 // With @captiveorigins/payload-plugin-signup, or your own form:
 const check = ageGateCheck({ secret: process.env.PAYLOAD_SECRET! })
 // check({ answers: { country, region, birthYear, birthMonth }, req }) → { refuse } | { flag: 'minor', userData } | undefined
+// After creating the user, record a minor with applyAgeGate(payload, { userId, userData, req }).
+// The fields can't be written through access-checked creates, so passing userData with overrideAccess: false would drop it.
 ```
 
 The picker, for your form: `import { BirthMonthYear } from '@captiveorigins/payload-plugin-age-gate/client'`. It posts `birthMonth` and `birthYear`, and every word can be replaced for translation.
