@@ -21,6 +21,17 @@ Age gate for Payload: a neutral birth month and year check at sign-up that store
 
 What a minor may do on your site is up to your access rules: `isMinor(user.minorUntil)`.
 
+## On its own, and with others
+
+**On its own:** it adds `minorUntil` and a hidden cap to your users collection, plus the signed-in adult question. Your own form calls `ageGateCheck` and `applyAgeGate`, and your access rules call `isMinor`. It imports no other Captive Origins plugin.
+
+**Works with:**
+- **Sign-up:** put `ageGateCheck` in Sign-up's `checks`. It refuses anyone too young, flags a minor for staff, and hands `minorUntil` to the new account as `userData`. The birth month and year go in as `answers`, which Sign-up never stores.
+- **Guardians:** Guardians' required `isMinor` can read this plugin's field: `(user) => isMinor(user.minorUntil)`.
+- **Audit Trail:** pass `onEvent` through Audit Trail's `fromPluginEvent`, so every change to a minor status lands in the tamper-evident trail.
+
+**Family:** It's part of the **Identity** family (a working draft): plugins designed to sit together for accounts and access. The others are Sign-up, MFA, Hats, Guardians, User Controls, Roles and Masq.
+
 ## Use
 
 ```ts
