@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { CollectionConfig, Config, Endpoint, Field, PayloadRequest, Plugin } from 'payload'
 import { APIError } from 'payload'
 
+import { isStaff } from './access.js'
 import { AGES, DEFAULT_RULE, maxMajority, ruleFor, type AgeRule } from './ages.js'
 import { ageCheck, askAgainUntil, capFor, isMinor, type AgeResult } from './check.js'
 
@@ -25,7 +26,10 @@ export type AgeGateOptions = {
   ages?: Record<string, AgeRule>
   /** The youngest anyone may sign up anywhere. Default 13. */
   minimumAge?: number
-  /** Who may set or clear an account's minor status by hand (staff, for safety). Nobody else ever can. */
+  /**
+   * Who may set or clear an account's minor status by hand (staff, for safety). Nobody else ever can. Only an answer
+   * of exactly `true` counts, and only for a signed-in user; anything else, a thrown error included, is a no.
+   */
   canSetMinor: (args: { req: PayloadRequest }) => boolean | Promise<boolean>
   /** Signs the "too young, come back later" cookie. Use a long random secret (e.g. your app secret). */
   secret: string
@@ -93,10 +97,12 @@ export const tooYoungMessage = (allowedFrom: string) => `Thanks for your interes
 
 /** The fields added to the users collection. Nobody can change them through the API except `canSetMinor`. */
 function fields(opts: AgeGateOptions): Field[] {
-  const staff = ({ req }: { req: PayloadRequest }) => Promise.resolve(opts.canSetMinor({ req }))
+  // Only an exact `true` from `canSetMinor` makes staff; a truthy value or a thrown error is a no, and a
+  // site's answer is never handed to Payload as the field's access.
+  const staff = ({ req }: { req: PayloadRequest }) => isStaff(opts.canSetMinor, req)
   // Only the person and staff see it: "minor until 2031-04" hints at a birth month (Plugin Security, 0.1.0).
   const selfOrStaff = async ({ req, id, doc }: { req: PayloadRequest; id?: string | number; doc?: { id?: unknown } }) =>
-    Boolean(req.user && String(req.user.id) === String(id ?? doc?.id)) || (await opts.canSetMinor({ req }))
+    Boolean(req.user && String(req.user.id) === String(id ?? doc?.id)) || (await isStaff(opts.canSetMinor, req))
   return [
     {
       name: 'minorUntil',

@@ -15,7 +15,7 @@ Age gate for Payload: a neutral birth month and year check at sign-up that store
 - **"Are you a legal adult now?"** Once `minorUntil` has passed, the person answers. Yes clears it. No moves it a year on, but never past the highest age of majority anywhere (21), so nobody stays a minor indefinitely.
 - **Nobody sets their own status.** Only who you allow with `canSetMinor` (staff) can change `minorUntil`. Every change goes to `onEvent`, for your audit log.
 - **Fails closed.** Missing or nonsense answers are refused, not guessed. Where a country's ages differ by region (US states, Canadian provinces) and no region is given, the highest applies.
-- **Private.** Only the person and `canSetMinor` can read `minorUntil`.
+- **Private.** Only the person and `canSetMinor` can read `minorUntil`. Only an exact `true` from `canSetMinor` counts: see [Access](#access).
 
 **It's self-declared, not verified.** A child can choose a false year or clear their cookies. This checks what people tell you, protectively; it doesn't prove anyone's age.
 
@@ -56,6 +56,21 @@ const check = ageGateCheck({ secret: process.env.PAYLOAD_SECRET! })
 The picker, for your form: `import { BirthMonthYear } from '@captiveorigins/payload-plugin-age-gate/client'`. It posts `birthMonth` and `birthYear`, and every word can be replaced for translation.
 
 The adult question: `POST /api/users/age-gate/adult` with `{ "adult": true | false }`, signed in.
+
+## Access
+
+`canSetMinor` decides who is staff, and only an answer of exactly `true` counts, for a signed-in user.
+Anything else is a no: `false`, `1`, `'yes'`, an object, or an error thrown or rejected. An error
+doesn't escape as a 500: the field is simply left out or left unchanged, as for anyone else who
+isn't staff. Payload's field access has no queries, so `canSetMinor`'s answer is never passed to it.
+
+| Field | Staff | The person | Anyone else, or signed out |
+|---|---|---|---|
+| `minorUntil` | Reads, sets, clears | Reads only | Never sees it |
+| `minorCap` | Reads, sets, clears | Never sees it | Never sees it |
+
+The person clears their own status only through the adult question above, and `applyAgeGate`
+records a sign-up's result with full access.
 
 ## Commands
 

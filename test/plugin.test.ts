@@ -1,6 +1,6 @@
 import { mongooseAdapter } from '@payloadcms/db-mongodb'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
-import { buildConfig, createLocalReq, getPayload, type Endpoint, type Payload, type PayloadRequest } from 'payload'
+import { buildConfig, createLocalReq, getPayload, handleEndpoints, type Endpoint, type Payload, type PayloadRequest } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { ageGate, ageGateCheck, applyAgeGate, type AgeGateEvent } from '../src/index.js'
@@ -10,6 +10,8 @@ let payload: Payload
 let mongo: MongoMemoryReplSet
 const SECRET = 's'.repeat(40)
 const events: AgeGateEvent[] = []
+/** When set, what `canSetMinor` answers instead of the site's rule (staff by role). */
+let setMinorAnswer: (() => unknown) | null = null
 let staff: U
 let kid: U
 let other: U
@@ -37,7 +39,7 @@ beforeAll(async () => {
       typescript: { autoGenerate: false },
       db: mongooseAdapter({ url: mongo.getUri('agegate'), ensureIndexes: true }),
       collections: [{ slug: 'users', auth: true, access: { create: () => true, update: () => true, read: () => true }, fields: [{ name: 'role', type: 'select', options: ['staff', 'member'], defaultValue: 'member' }] }],
-      plugins: [ageGate({ secret: SECRET, canSetMinor: ({ req }) => (req.user as unknown as U | null)?.role === 'staff', onEvent: (e) => void events.push(e) })],
+      plugins: [ageGate({ secret: SECRET, canSetMinor: ((args: { req: PayloadRequest }) => (setMinorAnswer ? setMinorAnswer() : (args.req.user as unknown as U | null)?.role === 'staff')) as never, onEvent: (e) => void events.push(e) })],
     }),
   })
   staff = (await payload.create({ collection: 'users', data: { email: 'staff@example.invalid', password: 'pw-staff-long', role: 'staff' } as never })) as unknown as U
@@ -123,5 +125,93 @@ describe('the age gate on a users collection', () => {
   it('won’t start with a short secret or a missing users collection', () => {
     expect(() => ageGate({ secret: 'short', canSetMinor: () => false })({ collections: [{ slug: 'users', fields: [] }] } as never)).toThrow(/secret/)
     expect(() => ageGate({ secret: SECRET, canSetMinor: () => false })({ collections: [] } as never)).toThrow(/no "users"/)
+  })
+})
+
+describe('only an exact yes from canSetMinor (2026-11-11)', () => {
+  // Each a no: truthy values, objects (one shaped like a query, which field access must not read as a yes), and errors.
+  const noes: [string, () => unknown][] = [
+    ['1', () => 1],
+    ["'yes'", () => 'yes'],
+    ['{}', () => ({})],
+    ['a query-shaped object', () => ({ id: { exists: true } })],
+    ['a thrown error', () => {
+      throw new Error('staff directory down')
+    }],
+    ['a rejected promise', async () => {
+      throw new Error('staff directory down')
+    }],
+  ]
+  const answering = async (answer: () => unknown, body: () => Promise<void>) => {
+    setMinorAnswer = answer
+    try {
+      await body()
+    } finally {
+      setMinorAnswer = null
+    }
+  }
+  const as = (u: U | null) => ({ overrideAccess: false, user: u ? ({ ...u, collection: 'users' } as never) : undefined })
+  let child: U
+
+  beforeAll(async () => {
+    child = (await payload.create({ collection: 'users', data: { email: 'child@example.invalid', password: 'pw-child-long' } as never })) as unknown as U
+  })
+
+  it('nobody sets, clears or reads another account\'s minor status on anything but true, and a throw is a no, never an error', async () => {
+    for (const [label, answer] of noes) {
+      await payload.update({ collection: 'users', id: child.id, data: { minorUntil: '2031-04', minorCap: '2033-04' } as never, overrideAccess: true })
+      await answering(answer, async () => {
+        // Field access drops a refused field without an error, so each call must resolve and change nothing.
+        await expect(payload.update({ collection: 'users', id: child.id, data: { minorUntil: null, minorCap: null } as never, ...as(staff) }), label).resolves.toBeTruthy()
+        await expect(payload.update({ collection: 'users', id: child.id, data: { minorUntil: null, minorCap: null } as never, ...as(child) }), label).resolves.toBeTruthy()
+        const made = (await payload.create({ collection: 'users', data: { email: `made-${noes.findIndex((n) => n[0] === label)}@example.invalid`, password: 'pw-made-long', minorUntil: '2030-01', minorCap: '2030-01' } as never, ...as(staff) })) as unknown as U
+        expect((await fresh(made)).minorUntil ?? null, label).toBeNull()
+        expect((await fresh(child)).minorUntil, label).toBe('2031-04')
+        expect((await fresh(child)).minorCap, label).toBe('2033-04')
+        for (const reader of [staff, other, null]) {
+          const seen = (await payload.findByID({ collection: 'users', id: child.id, depth: 0, ...as(reader) })) as unknown as U
+          expect(seen.minorUntil, `${label} read by ${reader?.email ?? 'signed out'}`).toBeUndefined()
+          expect(seen.minorCap, `${label} read by ${reader?.email ?? 'signed out'}`).toBeUndefined()
+        }
+        // The person still reads their own "minor until", but never the cap.
+        const own = (await payload.findByID({ collection: 'users', id: child.id, depth: 0, ...as(child) })) as unknown as U
+        expect(own.minorUntil, label).toBe('2031-04')
+        expect(own.minorCap, label).toBeUndefined()
+      })
+    }
+    // Signed out is never staff, even when canSetMinor says true.
+    await answering(() => true, async () => {
+      const seen = (await payload.findByID({ collection: 'users', id: child.id, depth: 0, ...as(null) })) as unknown as U
+      expect(seen.minorUntil).toBeUndefined()
+      await payload.update({ collection: 'users', id: child.id, data: { minorUntil: null } as never, ...as(null) })
+      expect((await fresh(child)).minorUntil).toBe('2031-04')
+    })
+    // With exactly true, staff read and change both.
+    await answering(() => true, async () => {
+      const seen = (await payload.findByID({ collection: 'users', id: child.id, depth: 0, ...as(staff) })) as unknown as U
+      expect(seen).toMatchObject({ minorUntil: '2031-04', minorCap: '2033-04' })
+      await payload.update({ collection: 'users', id: child.id, data: { minorUntil: '2032-04' } as never, ...as(staff) })
+      expect((await fresh(child)).minorUntil).toBe('2032-04')
+    })
+  })
+
+  it('a throw from canSetMinor answers a REST read and update without a 500', async () => {
+    await payload.update({ collection: 'users', id: child.id, data: { minorUntil: '2031-04' } as never, overrideAccess: true })
+    const { token } = await payload.login({ collection: 'users', data: { email: 'staff@example.invalid', password: 'pw-staff-long' } })
+    const rest = (method: string, body?: unknown) =>
+      handleEndpoints({
+        config: payload.config,
+        request: new Request(`http://localhost/api/users/${child.id}`, { method, headers: { Authorization: `JWT ${token}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }),
+      })
+    await answering(() => {
+      throw new Error('staff directory down')
+    }, async () => {
+      const read = await rest('GET')
+      expect(read.status).toBe(200)
+      expect(((await read.json()) as U).minorUntil).toBeUndefined()
+      const write = await rest('PATCH', { minorUntil: null })
+      expect(write.status).toBeLessThan(500)
+    })
+    expect((await fresh(child)).minorUntil).toBe('2031-04')
   })
 })
