@@ -1,6 +1,6 @@
 {
   "name": "@captiveorigins/payload-plugin-age-gate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Age gate for Payload: a neutral birth month and year check at sign-up that stores only how long an account is a minor, from a table of ages by country, with a stay-blocked cookie and an \"are you an adult now?\" step.",
   "homepage": "https://github.com/CaptiveOrigins/payload-plugin-age-gate#readme",
   "bugs": {
