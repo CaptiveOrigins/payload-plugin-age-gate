@@ -61,12 +61,19 @@ export function blockedUntil(secret: string, cookieHeader: string | null | undef
 
 export type SignupAnswers = { country?: unknown; region?: unknown; birthYear?: unknown; birthMonth?: unknown }
 
+/** What `ageGateCheck` answers: nothing for an adult. */
+export type AgeGateCheckResult = { refuse?: string; setCookies?: string[]; flag?: 'minor'; userData?: { minorUntil: string; minorCap: string } } | undefined
+
 /**
  * A sign-up check (for @captiveorigins/payload-plugin-signup's `checks`, or your own form): refuses someone too young,
  * marks a minor with `minorUntil` and `minorCap`, and passes adults. The answers are only read, never stored.
+ *
+ * It reads the stay-blocked cookie from `req.headers`, and never writes to the request. Refusing someone too young,
+ * it returns the cookie to set as `setCookies` (whole `Set-Cookie` values): Sign-up sets them on its response, and
+ * your own form should too.
  */
 export function ageGateCheck(opts: Pick<AgeGateOptions, 'ages' | 'minimumAge' | 'secret'>) {
-  return ({ answers, req }: { answers?: SignupAnswers; req: PayloadRequest }) => {
+  return ({ answers, req }: { answers?: SignupAnswers; req: Pick<PayloadRequest, 'headers'> }): AgeGateCheckResult => {
     const blocked = blockedUntil(opts.secret, req.headers.get('cookie'))
     if (blocked) return { refuse: tooYoungMessage(blocked) }
     const a = answers ?? {}
@@ -79,11 +86,7 @@ export function ageGateCheck(opts: Pick<AgeGateOptions, 'ages' | 'minimumAge' | 
       minimumAge: opts.minimumAge,
     })
     if (result.result === 'invalid') return { refuse: result.reason }
-    if (result.result === 'too-young') {
-      req.responseHeaders = new Headers(req.responseHeaders)
-      req.responseHeaders.append('Set-Cookie', blockCookie(opts.secret, result.allowedFrom))
-      return { refuse: tooYoungMessage(result.allowedFrom) }
-    }
+    if (result.result === 'too-young') return { refuse: tooYoungMessage(result.allowedFrom), setCookies: [blockCookie(opts.secret, result.allowedFrom)] }
     if (result.result === 'minor') {
       const cap = capFor(Number(a.birthYear), Number(a.birthMonth), maxMajority(opts.ages ?? AGES))
       return { flag: 'minor', userData: { minorUntil: result.minorUntil, minorCap: cap } }

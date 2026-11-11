@@ -26,7 +26,7 @@ What a minor may do on your site is up to your access rules: `isMinor(user.minor
 **On its own:** it adds `minorUntil` and a hidden cap to your users collection, plus the signed-in adult question. Your own form calls `ageGateCheck` and `applyAgeGate`, and your access rules call `isMinor`. It imports no other Captive Origins plugin.
 
 **Works with:**
-- **Sign-up:** put `ageGateCheck` in Sign-up's `checks`. It refuses anyone too young, flags a minor for staff, and hands `minorUntil` to the new account as `userData`. The birth month and year go in as `answers`, which Sign-up never stores.
+- **Sign-up:** put `ageGateCheck` in Sign-up's `checks`. It refuses anyone too young, flags a minor for staff, and hands `minorUntil` to the new account as `userData`. The birth month and year go in as `answers`, which Sign-up never stores. The stay-blocked cookie goes back as `setCookies`, which Sign-up sets on its response (Sign-up's next release; with 0.1.0 it's lost). Neither plugin imports the other: the check returns plain values.
 - **Guardians:** Guardians' required `isMinor` can read this plugin's field: `(user) => isMinor(user.minorUntil)`.
 - **Audit Trail:** pass `onEvent` through Audit Trail's `fromPluginEvent`, so every change to a minor status lands in the tamper-evident trail.
 
@@ -48,7 +48,8 @@ plugins: [
 
 // With @captiveorigins/payload-plugin-signup, or your own form:
 const check = ageGateCheck({ secret: process.env.PAYLOAD_SECRET! })
-// check({ answers: { country, region, birthYear, birthMonth }, req }) → { refuse } | { flag: 'minor', userData } | undefined
+// check({ answers: { country, region, birthYear, birthMonth }, req }) → { refuse, setCookies? } | { flag: 'minor', userData } | undefined
+// It reads the stay-blocked cookie from req.headers. Too young: set each of setCookies as a Set-Cookie header on your response.
 // After creating the user, record a minor with applyAgeGate(payload, { userId, userData, req }).
 // The fields can't be written through access-checked creates, so passing userData with overrideAccess: false would drop it.
 ```

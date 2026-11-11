@@ -70,9 +70,14 @@ describe('the age gate on a users collection', () => {
   it('the sign-up check: refuses and sets the stay-blocked cookie when too young, marks a minor, passes an adult', async () => {
     const check = ageGateCheck({ secret: SECRET })
     const young = await reqAs(null)
-    expect(check({ answers: { country: 'US', birthYear: new Date().getUTCFullYear() - 10, birthMonth: 1 }, req: young })?.refuse).toMatch(/You can sign up from/)
-    const cookie = (young.responseHeaders as Headers | undefined)?.get('Set-Cookie') ?? ''
-    expect(cookie).toMatch(/^age-gate=/)
+    const tooYoung = check({ answers: { country: 'US', birthYear: new Date().getUTCFullYear() - 10, birthMonth: 1 }, req: young })
+    expect(tooYoung?.refuse).toMatch(/You can sign up from/)
+    // The cookie comes back for the caller to set (Sign-up's endpoint sets it); the request is left alone.
+    const cookies = tooYoung?.setCookies ?? []
+    expect(cookies).toHaveLength(1)
+    const cookie = cookies[0]!
+    expect(cookie).toMatch(/^age-gate=[^;]+; Path=\/; HttpOnly; SameSite=Lax; Max-Age=\d+; Secure$/)
+    expect(young.responseHeaders?.get('Set-Cookie') ?? null).toBeNull()
     // Coming back with an older year doesn't get round it.
     const again = await reqAs(null, new Headers({ cookie: cookie.split(';')[0]! }))
     expect(check({ answers: { country: 'US', birthYear: 1980, birthMonth: 1 }, req: again })?.refuse).toMatch(/You can sign up from/)

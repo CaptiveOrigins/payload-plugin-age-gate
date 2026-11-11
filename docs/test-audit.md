@@ -2,6 +2,15 @@
 
 Kept by this repo's owning session, per `~/Code/CLAUDE.md`, "Test self-audits". Newest first.
 
+## 2026-11-11: the stay-blocked cookie comes back as `setCookies`
+
+Suite: 20 tests before, 20 after (`npx vitest run`); one test changed. Prompted by Sign-up's combo test, which found the cookie never reached a response: the check wrote it to `req.responseHeaders` of a copy of the request.
+
+- **The change.** `ageGateCheck` returns `{ refuse, setCookies: [cookie] }` for someone too young and never writes to the request. It needs only `req.headers`, so it's typed `Pick<PayloadRequest, 'headers'>`. Sign-up sets `setCookies` on its response, refusals included (Sign-up's side of the contract, tested there).
+- **Tests.** "the sign-up check": the refusal carries exactly one cookie, `HttpOnly`, `SameSite=Lax`, `Secure`, with a `Max-Age`; the request's `responseHeaders` stay empty; coming back with that cookie and an older year is still refused.
+- **Mutation checks.** 2 mutations, each a Python string replace, restored exactly (checked by SHA-256). Both fail the suite: no `setCookies` on the refusal; the cookie written to `req.responseHeaders` as before.
+- **Skipped.** The pairing end to end through Sign-up's endpoint is Sign-up's combo test (branch `combo-tests`), run against this branch locally; it isn't in this repo.
+
 ## 2026-11-11: only an exact `true` from `canSetMinor` passes
 
 Suite: 18 tests before, 20 after (`npx vitest run`, real Payload, in-memory MongoDB, made-up accounts). Prompted by an access-control sweep across the plugins; the fix follows payload-plugin-sponsors. Kids' safety, so always covered.
