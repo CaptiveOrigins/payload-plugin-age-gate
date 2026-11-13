@@ -65,7 +65,7 @@ export type SignupAnswers = { country?: unknown; region?: unknown; birthYear?: u
 export type AgeGateCheckResult = { refuse?: string; setCookies?: string[]; flag?: 'minor'; userData?: { minorUntil: string; minorCap: string } } | undefined
 
 /**
- * A sign-up check (for @captiveorigins/payload-plugin-signup's `checks`, or your own form): refuses someone too young,
+ * A sign-up check (for @extantape/payload-plugin-signup's `checks`, or your own form): refuses someone too young,
  * marks a minor with `minorUntil` and `minorCap`, and passes adults. The answers are only read, never stored.
  *
  * It reads the stay-blocked cookie from `req.headers`, and never writes to the request. Refusing someone too young,

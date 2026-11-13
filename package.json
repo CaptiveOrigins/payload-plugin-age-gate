@@ -1,10 +1,10 @@
 {
-  "name": "@captiveorigins/payload-plugin-age-gate",
+  "name": "@extantape/payload-plugin-age-gate",
   "version": "0.1.2",
   "description": "Age gate for Payload: a neutral birth month and year check at sign-up that stores only how long an account is a minor, from a table of ages by country, with a stay-blocked cookie and an \"are you an adult now?\" step.",
-  "homepage": "https://github.com/CaptiveOrigins/payload-plugin-age-gate#readme",
+  "homepage": "https://github.com/ExtantApe/payload-plugin-age-gate#readme",
   "bugs": {
-    "url": "https://github.com/CaptiveOrigins/payload-plugin-age-gate/issues"
+    "url": "https://github.com/ExtantApe/payload-plugin-age-gate/issues"
   },
   "keywords": [
     "payload",
@@ -23,7 +23,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CaptiveOrigins/payload-plugin-age-gate.git"
+    "url": "git+https://github.com/ExtantApe/payload-plugin-age-gate.git"
   },
   "type": "module",
   "exports": {

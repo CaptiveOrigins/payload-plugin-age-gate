@@ -35,7 +35,7 @@ What a minor may do on your site is up to your access rules: `isMinor(user.minor
 ## Use
 
 ```ts
-import { ageGate, ageGateCheck } from '@captiveorigins/payload-plugin-age-gate'
+import { ageGate, ageGateCheck } from '@extantape/payload-plugin-age-gate'
 
 plugins: [
   ageGate({
@@ -46,7 +46,7 @@ plugins: [
   }),
 ]
 
-// With @captiveorigins/payload-plugin-signup, or your own form:
+// With @extantape/payload-plugin-signup, or your own form:
 const check = ageGateCheck({ secret: process.env.PAYLOAD_SECRET! })
 // check({ answers: { country, region, birthYear, birthMonth }, req }) → { refuse, setCookies? } | { flag: 'minor', userData } | undefined
 // It reads the stay-blocked cookie from req.headers. Too young: set each of setCookies as a Set-Cookie header on your response.
@@ -54,7 +54,7 @@ const check = ageGateCheck({ secret: process.env.PAYLOAD_SECRET! })
 // The fields can't be written through access-checked creates, so passing userData with overrideAccess: false would drop it.
 ```
 
-The picker, for your form: `import { BirthMonthYear } from '@captiveorigins/payload-plugin-age-gate/client'`. It posts `birthMonth` and `birthYear`, and every word can be replaced for translation.
+The picker, for your form: `import { BirthMonthYear } from '@extantape/payload-plugin-age-gate/client'`. It posts `birthMonth` and `birthYear`, and every word can be replaced for translation.
 
 The adult question: `POST /api/users/age-gate/adult` with `{ "adult": true | false }`, signed in.
 
