@@ -23,7 +23,7 @@ What a minor may do on your site is up to your access rules: `isMinor(user.minor
 
 ## On its own, and with others
 
-**On its own:** it adds `minorUntil` and a hidden cap to your users collection, plus the signed-in adult question. Your own form calls `ageGateCheck` and `applyAgeGate`, and your access rules call `isMinor`. It imports no other Captive Origins plugin.
+**On its own:** it adds `minorUntil` and a hidden cap to your users collection, plus the signed-in adult question. Your own form calls `ageGateCheck` and `applyAgeGate`, and your access rules call `isMinor`. It doesn't depend on any other plugin.
 
 **Works with:**
 - **Sign-up:** put `ageGateCheck` in Sign-up's `checks`. It refuses anyone too young, flags a minor for staff, and hands `minorUntil` to the new account as `userData`. The birth month and year go in as `answers`, which Sign-up never stores. The stay-blocked cookie goes back as `setCookies`, which Sign-up sets on its response (Sign-up's next release; with 0.1.0 it's lost). Neither plugin imports the other: the check returns plain values.
