@@ -103,7 +103,7 @@ function fields(opts: AgeGateOptions): Field[] {
   // Only an exact `true` from `canSetMinor` makes staff; a truthy value or a thrown error is a no, and a
   // site's answer is never handed to Payload as the field's access.
   const staff = ({ req }: { req: PayloadRequest }) => isStaff(opts.canSetMinor, req)
-  // Only the person and staff see it: "minor until 2031-04" hints at a birth month (Plugin Security, 0.1.0).
+  // Only the person and staff see it: "minor until 2031-04" hints at a birth month (security review, 0.1.0).
   const selfOrStaff = async ({ req, id, doc }: { req: PayloadRequest; id?: string | number; doc?: { id?: unknown } }) =>
     Boolean(req.user && String(req.user.id) === String(id ?? doc?.id)) || (await isStaff(opts.canSetMinor, req))
   return [
